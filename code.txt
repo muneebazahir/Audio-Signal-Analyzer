@@ -1,0 +1,309 @@
+classdef DSP_Project < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                matlab.ui.Figure
+        LoadAudioButton         matlab.ui.control.Button
+        ExtractFeaturesButton   matlab.ui.control.Button
+        DetectLanguageButton    matlab.ui.control.Button
+        LoadSecondSignalButton  matlab.ui.control.Button
+        ConvolveButton          matlab.ui.control.Button
+        PlayOutputButton        matlab.ui.control.Button
+        UIAxes                  matlab.ui.control.UIAxes
+        ZCRLabel                matlab.ui.control.Label
+        EnergyLabel             matlab.ui.control.Label
+        PitchLabel              matlab.ui.control.Label
+        CentroidLabel           matlab.ui.control.Label
+        LanguageLabel           matlab.ui.control.Label
+    end
+
+
+    properties (Access = public)
+        Property % Description
+
+    x          % First audio signal
+    fs         % Sampling frequency
+
+    h          % Second signal
+    fs2
+
+    y          % Convolved output
+
+    zcr
+    energy
+    pitchValue
+    centroid
+
+    end
+
+
+    methods (Access = private)
+
+        % Button pushed function: LoadAudioButton
+        function LoadAudioButtonPushed(app, event)
+            % Load English audio
+
+folder = 'C:\Users\Hp\Desktop\DSP\';
+
+[file,path] = uigetfile(fullfile(folder,'*.wav'), ...
+    'Select Audio File');
+
+if isequal(file,0)
+    return;
+end
+
+fullPath = fullfile(path,file);
+
+% Check if file exists (IMPORTANT DEBUG STEP)
+if exist(fullPath,'file') ~= 2
+    error("File not found: %s", fullPath);
+end
+
+[x, fs] = audioread(fullPath);
+
+x = mean(x,2);
+x = x / max(abs(x));
+
+app.x = x;
+app.fs = fs;
+
+t = (0:length(x)-1)/fs;
+
+plot(app.UIAxes,t,x)
+
+title(app.UIAxes,'Loaded Audio Signal')
+xlabel(app.UIAxes,'Time')
+ylabel(app.UIAxes,'Amplitude')
+
+grid(app.UIAxes,'on')
+        end
+
+        % Button pushed function: ExtractFeaturesButton
+        function ExtractFeaturesButtonPushed(app, event)
+          % ==============================
+% ZERO CROSSING RATE
+% ==============================
+zcr = sum(abs(diff(sign(app.x)))) / length(app.x);
+
+% ==============================
+% ENERGY
+% ==============================
+energy = sum(app.x.^2);
+
+% ==============================
+% SPECTRAL CENTROID (MANUAL)
+% ==============================
+N = length(app.x);
+X = abs(fft(app.x));
+
+f = (0:N-1) * (app.fs / N);
+
+% Keep only positive frequencies
+half = 1:floor(N/2);
+X = X(half);
+f = f(half);
+
+centroid = sum(f .* X') / (sum(X) + eps);
+
+% ==============================
+% PITCH (APPROXIMATION - FFT BASED)
+% ==============================
+speechBand = (f > 50 & f < 400);   % typical human pitch range
+
+if sum(X(speechBand)) > 0
+    avgPitch = sum(f(speechBand) .* X(speechBand)') / sum(X(speechBand) + eps);
+else
+    avgPitch = 0;
+end
+
+% ==============================
+% STORE VALUES
+% ==============================
+app.zcr = zcr;
+app.energy = energy;
+app.pitchValue = avgPitch;
+app.centroid = centroid;
+
+% ==============================
+% DISPLAY
+% ==============================
+app.ZCRLabel.Text = ['ZCR: ', num2str(zcr)];
+app.EnergyLabel.Text = ['Energy: ', num2str(energy)];
+app.PitchLabel.Text = ['Pitch: ', num2str(avgPitch)];
+app.CentroidLabel.Text = ['Centroid: ', num2str(centroid)];
+        end
+
+        % Button pushed function: DetectLanguageButton
+        function DetectLanguageButtonPushed(app, event)
+            if app.zcr > 0.1 && app.centroid > 2000
+
+    language = 'English';
+
+else
+
+    language = 'French';
+
+end
+
+app.LanguageLabel.Text = ['Language: ', language];
+        end
+
+        % Button pushed function: LoadSecondSignalButton
+        function LoadSecondSignalButtonPushed(app, event)
+            [file,path] = uigetfile('*.wav');
+
+if isequal(file,0)
+    return;
+end
+
+fullPath = fullfile(path,file);
+
+[h, fs2] = audioread(fullPath);
+
+h = mean(h,2);
+
+h = h / max(abs(h));
+
+app.h = h;
+app.fs2 = fs2;
+        end
+
+        % Button pushed function: ConvolveButton
+        function ConvolveButtonPushed(app, event)
+            if app.fs ~= app.fs2
+    uialert(app.UIFigure, ...
+        'Sampling frequencies must match!', ...
+        'Error');
+    return;
+end
+
+% Convolution
+y = conv(app.x, app.h);
+
+% Normalize
+y = y / max(abs(y));
+
+% Store
+app.y = y;
+
+% Plot
+t = (0:length(y)-1)/app.fs;
+
+plot(app.UIAxes,t,y)
+
+title(app.UIAxes,'Convolved Signal')
+xlabel(app.UIAxes,'Time')
+ylabel(app.UIAxes,'Amplitude')
+        end
+
+        % Button pushed function: PlayOutputButton
+        function PlayOutputButtonPushed(app, event)
+            sound(app.y, app.fs);
+        end
+    end
+
+    % App initialization and construction
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure
+            app.UIFigure = uifigure;
+            app.UIFigure.Position = [100 100 640 480];
+            app.UIFigure.Name = 'UI Figure';
+
+            % Create LoadAudioButton
+            app.LoadAudioButton = uibutton(app.UIFigure, 'push');
+            app.LoadAudioButton.ButtonPushedFcn = createCallbackFcn(app, @LoadAudioButtonPushed, true);
+            app.LoadAudioButton.Position = [59 362 100 22];
+            app.LoadAudioButton.Text = 'Load Audio';
+
+            % Create ExtractFeaturesButton
+            app.ExtractFeaturesButton = uibutton(app.UIFigure, 'push');
+            app.ExtractFeaturesButton.ButtonPushedFcn = createCallbackFcn(app, @ExtractFeaturesButtonPushed, true);
+            app.ExtractFeaturesButton.Position = [58.5 322 103 22];
+            app.ExtractFeaturesButton.Text = 'Extract Features';
+
+            % Create DetectLanguageButton
+            app.DetectLanguageButton = uibutton(app.UIFigure, 'push');
+            app.DetectLanguageButton.ButtonPushedFcn = createCallbackFcn(app, @DetectLanguageButtonPushed, true);
+            app.DetectLanguageButton.Position = [56.5 281 109 22];
+            app.DetectLanguageButton.Text = 'Detect Language';
+
+            % Create LoadSecondSignalButton
+            app.LoadSecondSignalButton = uibutton(app.UIFigure, 'push');
+            app.LoadSecondSignalButton.ButtonPushedFcn = createCallbackFcn(app, @LoadSecondSignalButtonPushed, true);
+            app.LoadSecondSignalButton.Position = [49 240 126 22];
+            app.LoadSecondSignalButton.Text = 'Load Second Signal';
+
+            % Create ConvolveButton
+            app.ConvolveButton = uibutton(app.UIFigure, 'push');
+            app.ConvolveButton.ButtonPushedFcn = createCallbackFcn(app, @ConvolveButtonPushed, true);
+            app.ConvolveButton.Position = [63 200 100 22];
+            app.ConvolveButton.Text = 'Convolve';
+
+            % Create PlayOutputButton
+            app.PlayOutputButton = uibutton(app.UIFigure, 'push');
+            app.PlayOutputButton.ButtonPushedFcn = createCallbackFcn(app, @PlayOutputButtonPushed, true);
+            app.PlayOutputButton.Position = [64 161 100 22];
+            app.PlayOutputButton.Text = 'Play Output';
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.UIFigure);
+            title(app.UIAxes, 'DSP Audio Processing System')
+            xlabel(app.UIAxes, 'X')
+            ylabel(app.UIAxes, 'Y')
+            app.UIAxes.Position = [196 161 363 245];
+
+            % Create ZCRLabel
+            app.ZCRLabel = uilabel(app.UIFigure);
+            app.ZCRLabel.Position = [254 134 61 15];
+            app.ZCRLabel.Text = 'ZCRLabel';
+
+            % Create EnergyLabel
+            app.EnergyLabel = uilabel(app.UIFigure);
+            app.EnergyLabel.Position = [330 134 75 15];
+            app.EnergyLabel.Text = 'EnergyLabel';
+
+            % Create PitchLabel
+            app.PitchLabel = uilabel(app.UIFigure);
+            app.PitchLabel.Position = [424 134 63 15];
+            app.PitchLabel.Text = 'PitchLabel';
+
+            % Create CentroidLabel
+            app.CentroidLabel = uilabel(app.UIFigure);
+            app.CentroidLabel.Position = [290 89 83 15];
+            app.CentroidLabel.Text = 'CentroidLabel';
+
+            % Create LanguageLabel
+            app.LanguageLabel = uilabel(app.UIFigure);
+            app.LanguageLabel.Position = [395 89 92 15];
+            app.LanguageLabel.Text = 'LanguageLabel';
+        end
+    end
+
+    methods (Access = public)
+
+        % Construct app
+        function app = DSP_Project
+
+            % Create and configure components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
