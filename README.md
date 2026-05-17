@@ -97,7 +97,7 @@ Interactive GUI buttons:
 1. Clone this repository:
 
 ```bash
-git clone https://github.com/your-username/DSP-Language-Detection-GUI.git
+https://github.com/muneebazahir/Audio-Signal-Analyzer
 ```
 
 2. Open MATLAB.
